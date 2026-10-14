@@ -22,14 +22,14 @@ android {
         configureEach {
             //应用名
             //app name
-            resValue("string","app_name","Turnip 24.3.2")
+            resValue("string","app_name","Turnip_Rutabaga-26.10.10")
             //包名后缀
             //package name Suffix
-            applicationIdSuffix = ".turnip2432"
+            applicationIdSuffix = ".turnip_rutabaga_261010"
 
             //驱动在启动器内显示的名称
             //The name displayed by the driver in the launcher
-            manifestPlaceholders["driver"] = "Turnip 24.3.2"
+            manifestPlaceholders["driver"] = "Turnip_Rutabaga-26.10.10"
         }
     }
     compileOptions {
