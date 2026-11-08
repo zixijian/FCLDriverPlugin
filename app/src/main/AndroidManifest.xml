@@ -23,6 +23,12 @@
         <meta-data
             android:name="driver"
             android:value="${driver}" />
+        <meta-data
+            android:name="driver_lib"
+            android:value="${driverLib}" />
+        <meta-data
+            android:name="driver_gpu"
+            android:value="${driverGpu}" />
 
     </application>
 

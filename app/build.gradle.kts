@@ -34,6 +34,12 @@ android {
             //驱动在启动器内显示的名称
             //The name displayed by the driver in the launcher
             manifestPlaceholders["driver"] = customDriverName
+            //驱动库文件名（须存在于 src/main/jniLibs/<abi>/ 下）
+            //Driver library file name (must exist under src/main/jniLibs/<abi>/)
+            manifestPlaceholders["driverLib"] = "libvulkan_freedreno.so"
+            //驱动适配的 GPU 家族：adreno / mali / any
+            //The GPU family the driver targets: adreno / mali / any
+            manifestPlaceholders["driverGpu"] = "adreno"
         }
     }
     compileOptions {
