@@ -95,6 +95,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
 
       - name: Update last processed tag
         run: |
@@ -103,4 +105,4 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .last_tag
           git commit -m "chore: update last processed Turnip release to ${{ needs.check-upstream.outputs.tag_name }}" || exit 0
-          git push
+          git push origin "HEAD:${{ github.ref_name }}"
