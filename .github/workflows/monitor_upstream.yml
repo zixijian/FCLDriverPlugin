@@ -7,11 +7,48 @@ on:
   workflow_dispatch:
 
 jobs:
-  check-and-build:
+  check-upstream:
     runs-on: ubuntu-latest
+    outputs:
+      has_update: ${{ steps.check_release.outputs.has_update }}
+      tag_name: ${{ steps.check_release.outputs.tag_name }}
+      matrix: ${{ steps.check_release.outputs.matrix }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: dev
 
-    permissions:
-      contents: write
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Read last processed tag
+        id: last_tag
+        run: |
+          if [ -f .last_tag ]; then
+            TAG=$(cat .last_tag | tr -d '[:space:]')
+          else
+            TAG=""
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Check for new Turnip release
+        id: check_release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 scripts/package_turnip.py --mode check --last-tag "${{ steps.last_tag.outputs.tag }}"
+
+  build-drivers:
+    needs: check-upstream
+    if: needs.check-upstream.outputs.has_update == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        driver: ${{ fromJson(needs.check-upstream.outputs.matrix) }}
 
     steps:
       - name: Checkout repository
@@ -36,44 +73,40 @@ jobs:
           chmod +x gradlew
           chmod +x scripts/package_turnip.py
 
-      - name: Read last processed tag
-        id: last_tag
-        run: |
-          if [ -f .last_tag ]; then
-            TAG=$(cat .last_tag | tr -d '[:space:]')
-          else
-            TAG=""
-          fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-
-      - name: Check for new Turnip release
-        id: check_release
+      - name: Build Driver APK (${{ matrix.driver.name }})
+        id: build_apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python3 scripts/package_turnip.py --mode check --last-tag "${{ steps.last_tag.outputs.tag }}"
+          python3 scripts/package_turnip.py --mode build-single \
+            --zip-name "${{ matrix.driver.name }}" \
+            --zip-url "${{ matrix.driver.url }}" \
+            --output-dir dist
 
-      - name: Build Turnip Driver APKs
-        if: steps.check_release.outputs.has_update == 'true'
-        id: build_drivers
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          python3 scripts/package_turnip.py --mode build --output-dir dist
-
-      - name: Upload Packaged APKs
-        if: steps.check_release.outputs.has_update == 'true'
+      - name: Upload ${{ matrix.driver.base }} APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Turnip-Driver-APKs-${{ steps.build_drivers.outputs.tag_name }}
-          path: dist/*.apk
+          name: ${{ matrix.driver.base }}
+          path: dist/${{ matrix.driver.base }}.apk
+
+  update-last-tag:
+    needs: [check-upstream, build-drivers]
+    if: needs.check-upstream.outputs.has_update == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: dev
 
       - name: Update last processed tag
-        if: steps.check_release.outputs.has_update == 'true'
         run: |
-          echo "${{ steps.build_drivers.outputs.tag_name }}" > .last_tag
+          echo "${{ needs.check-upstream.outputs.tag_name }}" > .last_tag
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .last_tag
-          git commit -m "chore: update last processed Turnip release to ${{ steps.build_drivers.outputs.tag_name }}"
+          git commit -m "chore: update last processed Turnip release to ${{ needs.check-upstream.outputs.tag_name }}" || exit 0
           git push origin dev

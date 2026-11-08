@@ -137,10 +137,14 @@ def package_driver(zip_path, zip_name, release_tag, output_dir):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=["check", "build"], default="build",
-                        help="check: check if new release exists, build: download and build APKs")
+    parser.add_argument("--mode", choices=["check", "get-matrix", "build-single", "build"], default="build",
+                        help="check: check if new release exists; get-matrix: output matrix JSON; build-single: build a specific zip; build: build all")
     parser.add_argument("--last-tag", default="",
                         help="The last processed release tag")
+    parser.add_argument("--zip-url", default="",
+                        help="URL of the zip to build in build-single mode")
+    parser.add_argument("--zip-name", default="",
+                        help="Name of the zip to build in build-single mode")
     parser.add_argument("--output-dir", default="dist",
                         help="Output directory for packaged APKs")
     args = parser.parse_args()
@@ -155,20 +159,55 @@ def main():
 
     # If checking whether new
     if args.mode == "check":
-        if args.last_tag and args.last_tag.strip() == tag_name.strip():
-            print(f"Release {tag_name} is already up to date.")
+        has_update = "true" if not args.last_tag or args.last_tag.strip() != tag_name.strip() else "false"
+        print(f"Check result: has_update={has_update}, tag_name={tag_name}")
+        matrix_data = [
+            {
+                "name": a["name"],
+                "url": a["browser_download_url"],
+                "base": a["name"][:-4] if a["name"].lower().endswith(".zip") else a["name"]
+            }
+            for a in assets
+        ]
+        if "GITHUB_OUTPUT" in os.environ:
+            with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                f.write(f"has_update={has_update}\n")
+                f.write(f"tag_name={tag_name}\n")
+                f.write(f"matrix={json.dumps(matrix_data)}\n")
+        return
+
+    if args.mode == "get-matrix":
+        matrix_data = [
+            {
+                "name": a["name"],
+                "url": a["browser_download_url"],
+                "base": a["name"][:-4] if a["name"].lower().endswith(".zip") else a["name"]
+            }
+            for a in assets
+        ]
+        print(f"Found {len(matrix_data)} Turnip assets.")
+        if "GITHUB_OUTPUT" in os.environ:
+            with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                f.write(f"tag_name={tag_name}\n")
+                f.write(f"matrix={json.dumps(matrix_data)}\n")
+        return
+
+    if args.mode == "build-single":
+        if not args.zip_url or not args.zip_name:
+            print("Error: --zip-url and --zip-name are required for build-single mode.")
+            sys.exit(1)
+        os.makedirs(args.output_dir, exist_ok=True)
+        with tempfile.TemporaryDirectory() as dl_dir:
+            dest_zip = os.path.join(dl_dir, args.zip_name)
+            print(f"\nDownloading {args.zip_name} from {args.zip_url}...")
+            urllib.request.urlretrieve(args.zip_url, dest_zip)
+            apk_path = package_driver(dest_zip, args.zip_name, tag_name, args.output_dir)
+            apk_name = os.path.basename(apk_path) if apk_path else ""
             if "GITHUB_OUTPUT" in os.environ:
                 with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-                    f.write("has_update=false\n")
-                    f.write(f"tag_name={tag_name}\n")
-            return
-        else:
-            print(f"Found new release {tag_name} (previous: {args.last_tag}).")
-            if "GITHUB_OUTPUT" in os.environ:
-                with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-                    f.write("has_update=true\n")
-                    f.write(f"tag_name={tag_name}\n")
-            return
+                    f.write(f"apk_name={apk_name}\n")
+                    f.write(f"apk_path={apk_path}\n")
+        return
 
     os.makedirs(args.output_dir, exist_ok=True)
     with tempfile.TemporaryDirectory() as dl_dir:
