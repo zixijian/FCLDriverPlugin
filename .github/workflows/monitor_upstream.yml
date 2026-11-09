@@ -9,6 +9,9 @@ on:
 jobs:
   check-upstream:
     runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
     outputs:
       has_update: ${{ steps.check_release.outputs.has_update }}
       tag_name: ${{ steps.check_release.outputs.tag_name }}
@@ -38,6 +41,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python3 scripts/package_turnip.py --mode check --last-tag "${{ steps.last_tag.outputs.tag }}"
+
+      - name: Clean up workflow run record if no update
+        if: steps.check_release.outputs.has_update != 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "No update detected in upstream Turnip releases. Deleting this workflow run record to keep Actions clean..."
+          curl -s -X DELETE \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" || true
 
   build-drivers:
     needs: check-upstream
