@@ -7,12 +7,16 @@ android {
     namespace = "com.mio.plugin.renderer"
     compileSdk = 34
 
+    val customDriverName = project.findProperty("driverName") as? String ?: "Turnip 24.3.2"
+    val customAppSuffix = project.findProperty("appSuffix") as? String ?: ".turnip2432"
+    val customVersionName = project.findProperty("versionName") as? String ?: "1.0"
+
     defaultConfig {
         applicationId = "com.mio.plugin.renderer"
         minSdk = 26
         targetSdk = 34
         versionCode = 1
-        versionName = "1.0"
+        versionName = customVersionName
     }
 
     buildTypes {
@@ -22,14 +26,14 @@ android {
         configureEach {
             //应用名
             //app name
-            resValue("string","app_name","Turnip 24.3.2")
+            resValue("string", "app_name", customDriverName)
             //包名后缀
             //package name Suffix
-            applicationIdSuffix = ".turnip2432"
+            applicationIdSuffix = customAppSuffix
 
             //驱动在启动器内显示的名称
             //The name displayed by the driver in the launcher
-            manifestPlaceholders["driver"] = "Turnip 24.3.2"
+            manifestPlaceholders["driver"] = customDriverName
             //驱动库文件名（须存在于 src/main/jniLibs/<abi>/ 下）
             //Driver library file name (must exist under src/main/jniLibs/<abi>/)
             manifestPlaceholders["driverLib"] = "libvulkan_freedreno.so"
