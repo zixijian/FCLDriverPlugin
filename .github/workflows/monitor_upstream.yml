@@ -42,16 +42,66 @@ jobs:
         run: |
           python3 scripts/package_turnip.py --mode check --last-tag "${{ steps.last_tag.outputs.tag }}"
 
-      - name: Clean up workflow run record if no update
-        if: steps.check_release.outputs.has_update != 'true'
+      - name: Delete historical runs without artifacts
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "No update detected in upstream Turnip releases. Deleting this workflow run record to keep Actions clean..."
-          curl -s -X DELETE \
-            -H "Accept: application/vnd.github.v3+json" \
-            -H "Authorization: Bearer $GITHUB_TOKEN" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" || true
+          set -euo pipefail
+
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          page=1
+
+          while true; do
+            response=$(curl --fail --silent --show-error \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "${api}/actions/workflows/monitor_upstream.yml/runs?per_page=100&page=${page}")
+
+            count=$(jq '.workflow_runs | length' <<< "$response")
+            [ "$count" -gt 0 ] || break
+
+            while IFS= read -r run_id; do
+              [ -n "$run_id" ] || continue
+
+              if [ "$run_id" = "$GITHUB_RUN_ID" ]; then
+                echo "Keeping current run ${run_id}."
+                continue
+              fi
+
+              run_status=$(jq -r --argjson id "$run_id" '.workflow_runs[] | select(.id == $id) | .status' <<< "$response")
+              if [ "$run_status" != "completed" ]; then
+                echo "Keeping active run ${run_id}: status=${run_status}."
+                continue
+              fi
+
+              artifacts=$(curl --fail --silent --show-error \
+                -H "Accept: application/vnd.github+json" \
+                -H "Authorization: Bearer ${GH_TOKEN}" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                "${api}/actions/runs/${run_id}/artifacts")
+
+              artifact_count=$(jq '.total_count // 0' <<< "$artifacts")
+              if [ "$artifact_count" -eq 0 ]; then
+                http_code=$(curl --silent --output /dev/null --write-out '%{http_code}' \
+                  -X DELETE \
+                  -H "Accept: application/vnd.github+json" \
+                  -H "Authorization: Bearer ${GH_TOKEN}" \
+                  -H "X-GitHub-Api-Version: 2022-11-28" \
+                  "${api}/actions/runs/${run_id}")
+
+                if [ "$http_code" = "204" ]; then
+                  echo "Deleted run ${run_id}: no artifacts."
+                else
+                  echo "Failed to delete run ${run_id}: HTTP ${http_code}."
+                fi
+              else
+                echo "Keeping run ${run_id}: ${artifact_count} artifact(s)."
+              fi
+            done < <(jq -r '.workflow_runs[].id' <<< "$response")
+
+            page=$((page + 1))
+          done
 
   build-drivers:
     needs: check-upstream
